@@ -1,0 +1,131 @@
+---
+title: "Prediction Assignment"
+author: "Andrea Yuste"
+date: "3/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Instructions
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Objective 
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+# Getting and cleaning the Data
+
+## Load the functions and set the seed
+
+```{r libraries}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(e1071)
+library(randomForest)
+
+set.seed(1)
+```
+
+## Read the files
+
+```{r files}
+train.data.raw <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+test.data.raw <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+## Remove unecessary colums
+```{r}
+# Drop the first 7 columns as they're unnecessary for predicting.
+train.data.clean1 <- train.data.raw[,8:length(colnames(train.data.raw))]
+test.data.clean1 <- test.data.raw[,8:length(colnames(test.data.raw))]
+```
+
+```{r}
+# Drop colums with NAs
+train.data.clean1 <- train.data.clean1[, colSums(is.na(train.data.clean1)) == 0] 
+test.data.clean1 <- test.data.clean1[, colSums(is.na(test.data.clean1)) == 0] 
+```
+
+```{r}
+# Check for near zero variance predictors and drop them if necessary
+nzv <- nearZeroVar(train.data.clean1,saveMetrics=TRUE)
+zero.var.ind <- sum(nzv$nzv)
+if ((zero.var.ind>0)) {
+  train.data.clean1 <- train.data.clean1[,nzv$nzv==FALSE]
+}
+```
+
+```{r}
+# Slice the data for cross validation
+in.training <- createDataPartition(train.data.clean1$classe, p=0.70, list=F)
+train.data.final <- train.data.clean1[in.training, ]
+validate.data.final <- train.data.clean1[-in.training, ]
+```
+
+
+# Model Development
+
+## Train the model
+```{r}
+control.parms <- trainControl(method="cv", 5)
+rf.model <- train(classe ~ ., data=train.data.final, method="rf", trControl=control.parms, ntree=5)
+rf.model
+```
+
+## Estimate performance
+```{r}
+# Confusion Matrix
+rf.predict <- predict(rf.model, validate.data.final)
+confusionMatrix(validate.data.final$classe, rf.predict)
+```
+
+```{r}
+# Accuracy
+accuracy <- postResample(rf.predict, validate.data.final$classe)
+acc.out <- accuracy[1]
+acc.out
+```
+
+```{r}
+# Overall Out-of-Sample error
+overall.ose <- 1-as.numeric(confusionMatrix(validate.data.final$classe, rf.predict)$overall[1])
+overall.ose
+```
+
+
+# Run the model
+
+```{r}
+results <- predict(rf.model, test.data.clean1[, -length(names(test.data.clean1))])
+results
+```
+
+
+# Decision Tree Visualization
+
+```{r}
+treeModel <- rpart(classe ~ ., data=train.data.final, method="class")
+fancyRpartPlot(treeModel)
+```
+
